@@ -11,14 +11,15 @@ class DataFetcher:
 
     def get_insider_signals(self):
         try:
-            # 안정적인 분석을 위해 11월 데이터 타겟팅
+            # 보수적 접근: $50,000 이상 매수만 수집
             date_query = "filedAt:[2025-11-01 TO 2025-11-30]"
-            full_query = f"formType:\"4\" AND {date_query}"
+            value_query = "transactions.value:[50000 TO 100000000]"
+            full_query = f"formType:\"4\" AND {date_query} AND {value_query}"
             
             payload = {
                 "query": { "query_string": { "query": full_query } },
                 "from": "0", 
-                "size": "30", # 더 많은 데이터를 분석
+                "size": "30",
                 "sort": [{ "filedAt": { "order": "desc" } }]
             }
             

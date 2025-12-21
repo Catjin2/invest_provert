@@ -7,17 +7,17 @@ def main():
     backtester = Backtester()
     notion = NotionLogger()
 
-    print("🚀 안티그레비티 포트폴리오 시스템 가동...")
+    print("🚀 보수적 안티그레비티 전략 가동 (필터: $50K 이상)...")
     signals = fetcher.get_insider_signals()
     
-    if not signals:
-        print("❌ 공시 데이터를 가져오지 못했습니다.")
-        return
-
-    processed_tickers = set() # 한 실행에서 중복 종목 방지
+    processed_tickers = set()
     for sig in signals:
         ticker = sig.get('ticker')
         date_raw = sig.get('filedAt')
+        
+        # 직급 확인: CEO, CFO, President 등 핵심 인물인지 판별
+        job_title = sig.get('officerTitle', 'Director/Owner').upper()
+        is_clevel = any(role in job_title for role in ['CEO', 'CFO', 'PRESIDENT', 'CHIEF'])
         
         if ticker in processed_tickers: continue
             
@@ -26,11 +26,15 @@ def main():
             res = backtester.calculate_return(ticker, clean_date)
             
             if res:
+                # 노션에 보낼 데이터에 직급 정보 추가
+                res['Job_Title'] = job_title
+                res['Importance'] = "🔥 핵심경영진" if is_clevel else "✅ 일반내부자"
+                
                 if notion.add_row(res):
-                    print(f"✅ {ticker} 분석 완료 및 노션 전송 성공! ({res['Return_Pct']}%)")
+                    print(f"✅ {res['Importance']} | {ticker} 전송 완료!")
                 processed_tickers.add(ticker)
 
-    print("🎉 모든 분석 결과가 노션에 저장되었습니다.")
+    print("🎉 보수적 분석 완료.")
 
 if __name__ == "__main__":
     main()
