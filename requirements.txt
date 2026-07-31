@@ -1,0 +1,8 @@
+pandas
+requests
+matplotlib
+yfinance
+python-dotenv
+pytz
+pykrx
+finance-datareader

@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+invest_standalone.db
+
+# VS Code settings
+.vscode/
+
+# Project-specific generated reports and logs
+reports/*
+!reports/.gitkeep

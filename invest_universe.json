@@ -1,0 +1,20 @@
+{
+    "nasdaq_100": [
+        "SPY",
+        "QQQ",
+        "IWM",
+        "VGK",
+        "EWJ",
+        "XLK",
+        "XLF",
+        "XLE",
+        "XLV",
+        "GLD",
+        "USO",
+        "TLT",
+        "IEF",
+        "SHY",
+        "LQD"
+    ],
+    "last_updated": "2026-06-06T17:32:00"
+}
