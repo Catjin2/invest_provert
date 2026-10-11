@@ -11,6 +11,7 @@ This document provides an automatically generated index of the codebase, describ
 │       └── daily_run.yml
 ├── .gitignore
 ├── PROJECT_INDEX.md
+├── PR_GUIDE.md
 ├── README.md
 ├── core
 │   ├── __init__.py
@@ -31,6 +32,7 @@ This document provides an automatically generated index of the codebase, describ
 │   ├── strategy.py
 │   ├── trader.py
 │   └── universe.py
+├── pyrefly.toml
 ├── requirements.txt
 ├── run_insider_alert.bat
 ├── run_lvmb_simulation.bat
@@ -51,6 +53,13 @@ This document provides an automatically generated index of the codebase, describ
 
 ---
 
+### 📄 [.github/workflows/daily_run.yml](file:///c:/Users/catji/Projects/invest_provert/.github/workflows/daily_run.yml)
+
+- **Relative Path**: `.github/workflows/daily_run.yml`
+- **Description**: Project file
+
+---
+
 ### 📄 [.gitignore](file:///c:/Users/catji/Projects/invest_provert/.gitignore)
 
 - **Relative Path**: `.gitignore`
@@ -65,10 +74,23 @@ This document provides an automatically generated index of the codebase, describ
 
 ---
 
+### 📄 [PR_GUIDE.md](file:///c:/Users/catji/Projects/invest_provert/PR_GUIDE.md)
+
+- **Relative Path**: `PR_GUIDE.md`
+- **Description**: Markdown document: 🗂️ Technical Architecture & PR Documentation: invest_provert
+
+---
+
 ### 📄 [README.md](file:///c:/Users/catji/Projects/invest_provert/README.md)
 
 - **Relative Path**: `README.md`
 - **Description**: Markdown document: invest_provert
+
+---
+
+### 📄 [core/__init__.py](file:///c:/Users/catji/Projects/invest_provert/core/__init__.py)
+
+- **Relative Path**: `core/__init__.py`
 
 ---
 
@@ -105,7 +127,7 @@ This document provides an automatically generated index of the codebase, describ
 ### 📄 [invest_standalone.db](file:///c:/Users/catji/Projects/invest_provert/invest_standalone.db)
 
 - **Relative Path**: `invest_standalone.db`
-- **Description**: SQLite database file
+- **Description**: Database file
 
 ---
 
@@ -116,12 +138,18 @@ This document provides an automatically generated index of the codebase, describ
 
 ---
 
+### 📄 [lvmb_momentum/__init__.py](file:///c:/Users/catji/Projects/invest_provert/lvmb_momentum/__init__.py)
+
+- **Relative Path**: `lvmb_momentum/__init__.py`
+
+---
+
 ### 📄 [lvmb_momentum/alert.py](file:///c:/Users/catji/Projects/invest_provert/lvmb_momentum/alert.py)
 
 - **Relative Path**: `lvmb_momentum/alert.py`
   - **Class**: `AntiGravityAlert`
     - *Methods*:
-      - `__new__(cls, *args, **kwargs)`
+      - `__new__(cls)`
       - `_init_alert(self)`
       - `_send_telegram(self, message)`
       - `_send_slack(self, message)`
@@ -238,6 +266,13 @@ This document provides an automatically generated index of the codebase, describ
 
 ---
 
+### 📄 [pyrefly.toml](file:///c:/Users/catji/Projects/invest_provert/pyrefly.toml)
+
+- **Relative Path**: `pyrefly.toml`
+- **Description**: Pyrefly configuration file
+
+---
+
 ### 📄 [requirements.txt](file:///c:/Users/catji/Projects/invest_provert/requirements.txt)
 
 - **Relative Path**: `requirements.txt`
@@ -256,6 +291,12 @@ This document provides an automatically generated index of the codebase, describ
 
 - **Relative Path**: `run_lvmb_simulation.bat`
 - **Description**: Windows Batch Script
+
+---
+
+### 📄 [sec_insider/__init__.py](file:///c:/Users/catji/Projects/invest_provert/sec_insider/__init__.py)
+
+- **Relative Path**: `sec_insider/__init__.py`
 
 ---
 
@@ -293,5 +334,3 @@ This document provides an automatically generated index of the codebase, describ
     - *Methods*:
       - `__init__(self)`
       - `add_row(self, data)`
-
----
