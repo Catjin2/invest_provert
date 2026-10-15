@@ -7,8 +7,8 @@ def upload_image_to_github(filepath):
             print(f"[github_uploader] File not found: {filepath}")
             return None
             
-        # Run git commands to stage, commit, and push the file
-        subprocess.run(["git", "add", filepath], check=True, stdout=subprocess.DEVNULL)
+        # Run git commands to stage, commit, and push the file (force add in case reports/ is gitignored)
+        subprocess.run(["git", "add", "-f", filepath], check=True, stdout=subprocess.DEVNULL)
         
         # Check if there are changes to commit
         status = subprocess.run(["git", "status", "--porcelain", filepath], capture_output=True, text=True, check=True)
@@ -18,7 +18,9 @@ def upload_image_to_github(filepath):
         else:
             filename = os.path.basename(filepath)
             subprocess.run(["git", "commit", "-m", f"Update chart {filename}"], check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(["git", "push"], check=True, timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            git_env = os.environ.copy()
+            git_env["GIT_TERMINAL_PROMPT"] = "0"
+            subprocess.run(["git", "push"], check=True, timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=git_env)
             
         # Construct the raw github url
         remote_url = subprocess.run(["git", "config", "--get", "remote.origin.url"], capture_output=True, text=True, check=True).stdout.strip()

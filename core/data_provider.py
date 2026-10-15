@@ -1,12 +1,36 @@
 import os
+from abc import ABC, abstractmethod
+from typing import Optional, Union, List
 import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import config
+from core.interfaces import IDataProvider
 
-class CoreDataProvider:
+class BaseDataProvider(IDataProvider):
+    """
+    Abstract Base Class defining the contract for all financial market data providers.
+    Inherits from IDataProvider for Dependency Inversion Principle.
+    """
+    @abstractmethod
+    def get_history(self, tickers: Union[str, List[str]], period: str = "1y", start: Optional[str] = None, end: Optional[str] = None, group_by: Optional[str] = None) -> Optional[pd.DataFrame]:
+        """Fetch historical OHLCV data for single or multiple tickers."""
+        pass
+
+    @abstractmethod
+    def get_current_price(self, ticker: str) -> float:
+        """Fetch latest price for a single ticker."""
+        pass
+
+    @abstractmethod
+    def get_exchange_rate(self) -> float:
+        """Fetch latest USD/KRW exchange rate."""
+        pass
+
+class CoreDataProvider(BaseDataProvider):
     def __init__(self):
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -35,7 +59,7 @@ class CoreDataProvider:
             params_dict["range"] = period
 
         try:
-            response = requests.get(url, params=params_dict, headers=self.headers, timeout=10)
+            response = requests.get(url, params=params_dict, headers=self.headers, timeout=config.DEFAULT_REQUEST_TIMEOUT)
             if response.status_code != 200:
                 print(f"   [CoreDataProvider] Direct Yahoo Query failed for {ticker} (Status: {response.status_code})")
                 return None
@@ -81,27 +105,15 @@ class CoreDataProvider:
             print(f"   [CoreDataProvider] Direct Yahoo Query exception for {ticker}: {e}")
             return None
 
-    def _forward_fill_to_today(self, df):
-        if df is None or df.empty:
-            return df
-            
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        today_dt = pd.to_datetime(today_str)
-        
-        last_date = df.index[-1]
-        last_date_str = last_date.strftime("%Y-%m-%d")
-        
-        if last_date_str < today_str:
-            new_row = df.iloc[-1].copy()
-            df.loc[today_dt] = new_row
-        return df
-
     def _fetch_single_ticker(self, ticker, period="1y", start=None, end=None):
         df = None
         
         # --- Tier 1: yfinance single download ---
         try:
-            df = yf.download(ticker, period=period, start=start, end=end, progress=False)
+            if start or end:
+                df = yf.download(ticker, start=start, end=end, progress=False)
+            else:
+                df = yf.download(ticker, period=period, progress=False)
             if df is not None and not df.empty and 'Close' in df.columns:
                 print(f"   [CoreDataProvider] Tier 1 (yfinance) success for {ticker}")
             else:
@@ -133,7 +145,10 @@ class CoreDataProvider:
         # 1. Batch download try - efficient for multiple tickers
         if len(ticker_list) > 1:
             try:
-                df_batch = yf.download(ticker_list, period=period, start=start, end=end, progress=False)
+                if start or end:
+                    df_batch = yf.download(ticker_list, start=start, end=end, progress=False)
+                else:
+                    df_batch = yf.download(ticker_list, period=period, progress=False)
                 if df_batch is not None and not df_batch.empty:
                     for ticker in ticker_list:
                         try:
@@ -166,7 +181,7 @@ class CoreDataProvider:
                 if df is not None:
                     ticker_dfs[t] = df
             else:
-                with ThreadPoolExecutor(max_workers=min(len(missing_tickers), 15)) as executor:
+                with ThreadPoolExecutor(max_workers=min(len(missing_tickers), config.DEFAULT_MAX_WORKERS)) as executor:
                     future_to_ticker = {
                         executor.submit(self._fetch_single_ticker, ticker, period, start, end): ticker
                         for ticker in missing_tickers
@@ -240,4 +255,4 @@ class CoreDataProvider:
                 return float(close_series.iloc[-1].iloc[0])
             else:
                 return float(close_series.iloc[-1])
-        return 1350.0
+        return config.FALLBACK_EXCHANGE_RATE

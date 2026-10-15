@@ -8,7 +8,7 @@ class DataAuditor:
     def __init__(self, db_path="invest_standalone.db"):
         self.db = AntiGravityDB(db_path)
 
-    def audit_dataframe(self, ticker, df, vol_dict=None) -> dict:
+    def audit_dataframe(self, ticker, df, vol_dict=None, conn=None) -> dict:
         """
         입력받은 시세 데이터프레임의 모든 영업일에 대한 정밀 감사 수행.
         결과를 DB에 로깅하고 심각한 오류 시 알림 트리거.
@@ -113,7 +113,7 @@ class DataAuditor:
             details = f"High error rate ({error_rate:.1%}): " + "; ".join(anomalies_found[:3])
 
         # DB 로그 적재
-        self.db.log_quality_audit(ticker, total_days, anomaly_days, error_rate, status, details)
+        self.db.log_quality_audit(ticker, total_days, anomaly_days, error_rate, status, details, conn=conn)
 
         # 문제 있을 시 텔레메트리/알림 트리거
         if status == "FAIL":

@@ -2,7 +2,7 @@ import sqlite3
 import os
 from contextlib import contextmanager
 
-class AntiGravityDB:
+class PortfolioDB:
     def __init__(self, db_path="invest_standalone.db"):
         self.db_path = db_path
         self._init_db()
@@ -92,12 +92,17 @@ class AntiGravityDB:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS pending_orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ticker TEXT UNIQUE,
+                ticker TEXT,
                 signal_price REAL,
                 signal_date DATETIME,
-                order_type TEXT DEFAULT 'BUY'
+                order_type TEXT DEFAULT 'BUY',
+                UNIQUE(ticker, signal_date)
             )
         ''')
+        try:
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_ticker_date ON pending_orders (ticker, signal_date)")
+        except sqlite3.OperationalError:
+            pass
         
         # Marketplace Index Baseline (for Relative MDD)
         cursor.execute('''
@@ -274,15 +279,15 @@ class AntiGravityDB:
             conn_local.close()
             return rows
 
-    def save_prices(self, ticker, df):
+    def save_prices(self, ticker, df, conn=None):
         if df is None or df.empty:
             return
         
         import pandas as pd
         from datetime import datetime
         
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        cursor = conn.cursor()
+        conn_local = conn if conn is not None else sqlite3.connect(self.db_path, timeout=30.0)
+        cursor = conn_local.cursor()
         
         # Ensure we have standard DataFrame columns, handling both strings and MultiIndex tuples
         cols = {}
@@ -316,8 +321,9 @@ class AntiGravityDB:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (ticker, date_str, open_val, high_val, low_val, close_val, adj_close_val, vol_val))
             
-        conn.commit()
-        conn.close()
+        if conn is None:
+            conn_local.commit()
+            conn_local.close()
 
     def get_cached_prices(self, ticker, start_date, end_date=None):
         import pandas as pd
@@ -352,11 +358,17 @@ class AntiGravityDB:
             return {"close": res[0], "adj_close": res[1], "date": res[2]}
         return None
 
-    def log_quality_audit(self, ticker, total_days, anomaly_days, error_rate, status, details):
+    def log_quality_audit(self, ticker, total_days, anomaly_days, error_rate, status, details, conn=None):
         self.execute('''
             INSERT INTO data_quality_audit (ticker, total_days, anomaly_days, error_rate, status, details)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (ticker, total_days, anomaly_days, error_rate, status, details))
+        ''', (ticker, total_days, anomaly_days, error_rate, status, details), conn=conn)
+
+    def enqueue_report_task(self, payload_json: str, conn=None):
+        self.execute('''
+            INSERT INTO reporting_queue (payload, status)
+            VALUES (?, 'PENDING')
+        ''', (payload_json,), conn=conn)
 
     def reset_database(self):
         conn = sqlite3.connect(self.db_path, timeout=30.0)
@@ -370,6 +382,8 @@ class AntiGravityDB:
         conn.close()
         print("Database has been reset to 10,000,000 KRW seed money and empty positions.")
 
+AntiGravityDB = PortfolioDB
+
 if __name__ == "__main__":
-    db = AntiGravityDB()
-    print("Anti-Gravity Standalone DB Initialized.")
+    db = PortfolioDB()
+    print("Portfolio Standalone DB Initialized.")

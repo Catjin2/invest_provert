@@ -1,20 +1,23 @@
-from core.data_provider import CoreDataProvider
+from typing import Optional
+from core.data_provider import BaseDataProvider, CoreDataProvider
 import pandas as pd
 from datetime import datetime, timedelta
+import config
 
 class Backtester:
-    def __init__(self, investment_amount=100):
+    def __init__(self, investment_amount=config.BACKTEST_INVESTMENT_AMOUNT, data_provider: Optional[BaseDataProvider] = None):
         self.investment_amount = investment_amount
-        self.fee_rate = 0.001 
+        self.fee_rate = config.DEFAULT_TRANSACTION_FEE_RATE 
+        self.data_provider = data_provider or CoreDataProvider()
 
     def calculate_return(self, ticker, signal_date_str):
         try:
             clean_date = signal_date_str.split(' ')[0]
             signal_date = datetime.strptime(clean_date, "%Y-%m-%d")
             entry_date = signal_date + timedelta(days=1)
-            exit_date = entry_date + timedelta(days=7)
+            exit_date = entry_date + timedelta(days=config.BACKTEST_HOLDING_DAYS)
 
-            data = CoreDataProvider().get_history(
+            data = self.data_provider.get_history(
                 ticker, 
                 start=entry_date.strftime("%Y-%m-%d"), 
                 end=(exit_date + timedelta(days=5)).strftime("%Y-%m-%d")

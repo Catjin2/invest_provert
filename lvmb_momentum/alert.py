@@ -3,7 +3,7 @@ import requests
 import threading
 from dotenv import load_dotenv
 
-class AntiGravityAlert:
+class PortfolioRiskAlert:
     _instance = None
     _lock = threading.Lock()
 
@@ -11,7 +11,7 @@ class AntiGravityAlert:
         # Thread-safe Singleton pattern
         with cls._lock:
             if not cls._instance:
-                cls._instance = super(AntiGravityAlert, cls).__new__(cls, *args, **kwargs)
+                cls._instance = super(PortfolioRiskAlert, cls).__new__(cls, *args, **kwargs)
                 cls._instance._init_alert()
             return cls._instance
 
@@ -49,7 +49,7 @@ class AntiGravityAlert:
             print(f"[Alert] Failed to send Slack notification: {e}")
 
     def _dispatch(self, message, level):
-        formatted_msg = f"🔔 *[Anti-Gravity Alert]*\n*Level*: `{level}`\n\n{message}"
+        formatted_msg = f"[Portfolio Risk Alert]\nLevel: {level}\n\n{message}"
         
         # 1. Try Telegram first if credentials exist
         if self.telegram_token and self.telegram_chat_id:
@@ -67,7 +67,8 @@ class AntiGravityAlert:
         t.start()
 
 # Global convenience instance
-alert_system = AntiGravityAlert()
+alert_system = PortfolioRiskAlert()
+AntiGravityAlert = PortfolioRiskAlert
 
 if __name__ == "__main__":
     print("Testing Alert System...")

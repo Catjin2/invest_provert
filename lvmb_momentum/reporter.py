@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from lvmb_momentum.database import AntiGravityDB
 from github_uploader import upload_image_to_github
 
-class AntiGravityReporter:
+class MomentumPortfolioReporter:
     def __init__(self, token=None, database_id=None):
         self.token = token or os.getenv("NOTION_REPORT_TOKEN") or os.getenv("NOTION_TOKEN")
         self.database_id = database_id or os.getenv("NOTION_REPORT_DATABASE_ID") or os.getenv("NOTION_DATABASE_ID")
@@ -86,10 +86,10 @@ class AntiGravityReporter:
                     # Beta vs QQQ
                     if "QQQ" in returns.columns:
                         market_returns = returns["QQQ"]
-                        covariance = port_returns.cov(market_returns)
-                        market_variance = market_returns.var()
+                        covariance = float(port_returns.cov(market_returns))
+                        market_variance = float(market_returns.var())
                         if market_variance > 0:
-                            beta = covariance / market_variance
+                            beta = float(covariance / market_variance)
                         
                         # Relative MDD
                         qqq_cum = (1 + market_returns).cumprod()
@@ -115,14 +115,36 @@ class AntiGravityReporter:
         total_investment = total_investment_usd * exchange_rate
 
         # Title Formatting
-        date_str = datetime.now().strftime('%m/%d')
-        tickers_str = ", ".join([p['ticker'] for p in positions[:3]])
-        title = f"[{category}] LV-MB 리포트 ({tickers_str}) - {date_str}"
+        import pytz
+        kst = pytz.timezone('Asia/Seoul')
+        now_kst = datetime.now(kst)
+        date_str = now_kst.strftime('%m/%d')
+        tickers_str = ", ".join([p['ticker'] for p in positions[:3]]) if positions else "No Positions"
+        title = f"[System B] 다중 주기 시계열 모멘텀 및 동적 자산배분 운용 보고서 ({tickers_str}) - {date_str}"
 
         # 5. Notion Blocks Reconstruction
         from typing import Any
         blocks: list[dict[str, Any]] = [
-            {"object": "block", "type": "heading_1", "heading_1": {"rich_text": [{"text": {"content": f"{category} Portfolio Intelligence"}}]}},
+            {
+                "object": "block",
+                "type": "callout",
+                "callout": {
+                    "rich_text": [{
+                        "type": "text",
+                        "text": {
+                            "content": (
+                                "[System B | 시계열 모멘텀 및 동적 자산배분 파이프라인]\n"
+                                f"운용 기준일시 (서울 KST): {now_kst.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                                "본 보고서는 다중 주기 시계열 모멘텀(21/63/126/252일 가중치), Z-Score 과열 필터(통계적 이상치 제어), "
+                                "트레일링 스탑(-10%), 포트폴리오 서킷브레이커(-15%)를 적용하여 실전 계좌(invest_standalone.db)를 "
+                                "운용하는 시스템 B 공식 정량 리포트입니다."
+                            )
+                        }
+                    }]
+                }
+            },
+            {"object": "block", "type": "divider", "divider": {}},
+            {"object": "block", "type": "heading_1", "heading_1": {"rich_text": [{"text": {"content": f"[System B] {category} 포트폴리오 운용 보고서"}}]}},
             {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": f"Reporting Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}"}}]}},
             {"object": "block", "type": "divider", "divider": {}},
             {"object": "block", "type": "heading_2", "heading_2": {"rich_text": [{"text": {"content": "1. Key Performance Summary"}}]}},
@@ -423,12 +445,13 @@ class AntiGravityReporter:
         
         properties = {
             title_key: {"title": [{"text": {"content": title}}]},
-            "Strategy": {"rich_text": [{"text": {"content": "Time-Series Momentum & CTA"}}]},
+            "시스템": {"select": {"name": "System B"}},
+            "Strategy": {"rich_text": [{"text": {"content": "[System B] 다중 주기 시계열 모멘텀 & 동적 자산배분 (LV-MB)"}}]},
             "ROI (%)": {"number": round(float(total_roi_raw), 4)}, # Notion Percent format expects fractions (0.0083 for 0.83%)
             "MDD (%)": {"number": round(float(portfolio_mdd_raw), 4)},
-            "Date": {"date": {"start": datetime.now().isoformat()}},
+            "Date": {"date": {"start": now_kst.isoformat()}},
             "Status": {"select": {"name": "Running" if is_safe else "Closed"}},
-            "Tags": {"multi_select": [{"name": "Momentum"}, {"name": "Live"}, {"name": category}]},
+            "Tags": {"multi_select": [{"name": "System B"}, {"name": "Live"}, {"name": category}]},
             "Net Profit": {"number": round(net_profit, 0)},
             "Total Investment": {"number": round(total_investment, 0)},
             "Strategy Grade": {"select": {"name": strategy_grade}},
@@ -451,9 +474,11 @@ class AntiGravityReporter:
         else:
             print(f"Notion Error: {response.text}")
 
+AntiGravityReporter = MomentumPortfolioReporter
+
 if __name__ == "__main__":
     import os
     from dotenv import load_dotenv
     load_dotenv()
-    reporter = AntiGravityReporter()
+    reporter = MomentumPortfolioReporter()
     reporter.generate_summary_report()

@@ -5,12 +5,14 @@ from lvmb_momentum.data_auditor import DataAuditor
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
+import config
 
 class DataProvider(CoreDataProvider):
     def __init__(self, db_path="invest_standalone.db"):
         super().__init__()
         self.db = AntiGravityDB(db_path)
         self.db_path = db_path
+        self.auditor = DataAuditor(db_path=self.db.db_path)
 
     def _fetch_single_ticker(self, ticker, period="1y", start=None, end=None):
         df = None
@@ -48,7 +50,6 @@ class DataProvider(CoreDataProvider):
             
             df = self.db.get_cached_prices(ticker, start_date_str, end_date=end)
             if df is not None and not df.empty:
-                df = self._forward_fill_to_today(df)
                 alert_system.send_alert(f"All external APIs failed. Tier 3 local cache fallback activated for {ticker}.", "WARNING")
             else:
                 print(f"   [DataProvider] Critical: No local cached data for {ticker}")
@@ -58,8 +59,7 @@ class DataProvider(CoreDataProvider):
         # Run Audit
         if df is not None and not df.empty:
             try:
-                auditor = DataAuditor(db_path=self.db.db_path)
-                auditor.audit_dataframe(ticker, df)
+                self.auditor.audit_dataframe(ticker, df)
             except Exception as audit_err:
                 print(f"   [DataProvider] Audit failed for {ticker}: {audit_err}")
 
@@ -80,28 +80,28 @@ class DataProvider(CoreDataProvider):
             try:
                 df_batch = yf.download(ticker_list, period=period, start=start, end=end, progress=False)
                 if df_batch is not None and not df_batch.empty:
-                    for ticker in ticker_list:
-                        try:
-                            if isinstance(df_batch.columns, pd.MultiIndex):
-                                single_df = pd.DataFrame(index=df_batch.index)
-                                has_data = False
-                                for col in ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']:
-                                    if col in df_batch.columns.levels[0] and ticker in df_batch[col].columns:
-                                        single_df[col] = df_batch[col][ticker]
-                                        has_data = True
-                                if has_data and not single_df.dropna(subset=['Close']).empty:
-                                    single_df = single_df.dropna(subset=['Close'])
-                                    self.db.save_prices(ticker, single_df)
-                                    
-                                    try:
-                                        auditor = DataAuditor(db_path=self.db.db_path)
-                                        auditor.audit_dataframe(ticker, single_df)
-                                    except Exception as audit_err:
-                                        print(f"   [DataProvider] Audit failed for {ticker}: {audit_err}")
+                    with self.db.transaction() as conn:
+                        for ticker in ticker_list:
+                            try:
+                                if isinstance(df_batch.columns, pd.MultiIndex):
+                                    single_df = pd.DataFrame(index=df_batch.index)
+                                    has_data = False
+                                    for col in ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']:
+                                        if col in df_batch.columns.levels[0] and ticker in df_batch[col].columns:
+                                            single_df[col] = df_batch[col][ticker]
+                                            has_data = True
+                                    if has_data and not single_df.dropna(subset=['Close']).empty:
+                                        single_df = single_df.dropna(subset=['Close'])
+                                        self.db.save_prices(ticker, single_df, conn=conn)
                                         
-                                    ticker_dfs[ticker] = single_df
-                        except Exception as e:
-                            print(f"   [DataProvider] Error unpacking batch data for {ticker}: {e}")
+                                        try:
+                                            self.auditor.audit_dataframe(ticker, single_df, conn=conn)
+                                        except Exception as audit_err:
+                                            print(f"   [DataProvider] Audit failed for {ticker}: {audit_err}")
+                                            
+                                        ticker_dfs[ticker] = single_df
+                            except Exception as e:
+                                print(f"   [DataProvider] Error unpacking batch data for {ticker}: {e}")
                     
                     if len(ticker_dfs) == len(ticker_list):
                         combined_df = self._reconstruct_multi_df(ticker_dfs)
@@ -120,7 +120,7 @@ class DataProvider(CoreDataProvider):
                 if df is not None:
                     ticker_dfs[t] = df
             else:
-                with ThreadPoolExecutor(max_workers=min(len(missing_tickers), 15)) as executor:
+                with ThreadPoolExecutor(max_workers=min(len(missing_tickers), config.DEFAULT_MAX_WORKERS)) as executor:
                     future_to_ticker = {
                         executor.submit(self._fetch_single_ticker, ticker, period, start, end): ticker
                         for ticker in missing_tickers
@@ -193,4 +193,4 @@ class DataProvider(CoreDataProvider):
         cached = self.db.get_last_cached_price(ticker)
         if cached:
             return float(cached['close'])
-        return 1350.0
+        return config.FALLBACK_EXCHANGE_RATE

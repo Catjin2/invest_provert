@@ -5,12 +5,13 @@ from datetime import datetime, timedelta
 import pytz
 from lvmb_momentum.data_provider_with_audit import DataProvider
 from dotenv import load_dotenv
-from lvmb_momentum.universe import AntiGravityUniverse
-from lvmb_momentum.strategy import AntiGravityStrategy
-from lvmb_momentum.trader import AntiGravityTrader
-from lvmb_momentum.database import AntiGravityDB
-from lvmb_momentum.reporter import AntiGravityReporter
+from lvmb_momentum.universe import AssetUniverse
+from lvmb_momentum.strategy import LvmbMomentumStrategy
+from lvmb_momentum.trader import MomentumPortfolioTrader
+from lvmb_momentum.database import PortfolioDB
+from lvmb_momentum.reporter import MomentumPortfolioReporter
 from lvmb_momentum.alert import alert_system
+import config
 
 import sys
 
@@ -23,13 +24,16 @@ def run_invest_cycle():
     kst = pytz.timezone('Asia/Seoul')
     now = datetime.now(kst)
     print(f"\n" + "="*50)
-    print(f"LV-MB & CTA Strategy Simulation")
-    print(f"   Time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[시스템 B] 다중 주기 시계열 모멘텀 및 동적 자산배분 운용 엔진")
+    print(f"   실행 일시 (KST): {now.strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*50)
     
-    trader = AntiGravityTrader()
-    strategy = AntiGravityStrategy()
-    universe_loader = AntiGravityUniverse()
+    # Composition Root: Dependency Injection Assembly
+    db = PortfolioDB(config.DEFAULT_DB_PATH)
+    data_provider = DataProvider(db.db_path)
+    trader = MomentumPortfolioTrader(db=db, data_provider=data_provider)
+    strategy = LvmbMomentumStrategy(data_provider=data_provider)
+    universe_loader = AssetUniverse()
     all_signals = []
     
     # --- STAGE 1: Market Open Execution ---
@@ -44,14 +48,13 @@ def run_invest_cycle():
     print("\n3. Scanning for NEW Stability & Trend Signals (Monthly Batch)...")
     
     # Fetch current regime_state
-    account_row = trader.db.fetchone("SELECT regime_state FROM account WHERE id = 1")
-    prev_state = account_row[0] if (account_row and account_row[0]) else 'SAFE'
+    prev_state = trader.get_regime_state()
     
     # Global Safety Check (with hysteresis buffer)
     is_safe, new_state, r12 = strategy.check_global_safety(prev_state)
     
     # Save the new state back to the database
-    trader.db.execute("UPDATE account SET regime_state = ?, last_update = ? WHERE id = 1", (new_state, datetime.now(kst).isoformat()))
+    trader.update_regime_state(new_state)
     
     if not is_safe:
         print(f"[GLOBAL EXIT] Safety Triggered: QQQ (R12 = {r12*100:.2f}%)")
@@ -59,20 +62,10 @@ def run_invest_cycle():
         alert_system.send_alert(f"GLOBAL RISK-OFF TRIGGERED: QQQ (R12 = {r12*100:.2f}%). Shifting portfolio to 100% Cash Regime and liquidating all active positions.", "CRITICAL")
         
         # 1. Clear any pending new signals first to prevent accidental fills
-        trader.db.execute("DELETE FROM pending_orders")
+        trader.clear_pending_orders()
         
         # 2. Liquidate all active positions immediately
-        active_pos = trader.db.fetchall_dict("SELECT * FROM positions")
-        if active_pos:
-            print(f"          -> Liquidating {len(active_pos)} active positions...")
-            for pos in active_pos:
-                try:
-                    exit_price = DataProvider().get_current_price(pos['ticker'])
-                    trader.close_position(pos, exit_price, "MACRO CRASH (QQQ R12 <= -2%)")
-                except Exception as e:
-                    print(f"Failed to liquidate {pos['ticker']}: {e}")
-        else:
-            print("          -> No active positions to liquidate.")
+        trader.liquidate_all_positions("MACRO CRASH (QQQ R12 <= -2%)")
         
     else:
         # Normal Regime: Only generate new signals if today is the LAST trading day of the month.
@@ -83,63 +76,18 @@ def run_invest_cycle():
         is_month_end = tomorrow.month != now.month or next_week.month != now.month
         
         if is_month_end:
-            # 1. Monthly Seed Money Addition (+500,000 KRW)
             current_month_str = now.strftime('%Y-%m')
-            account_row = trader.db.fetchone("SELECT last_seed_addition FROM account WHERE id = 1")
-            last_addition_month = account_row[0] if account_row else None
-            
-            if last_addition_month != current_month_str:
-                balance, equity, max_equity = trader.db.get_account_info()
-                new_balance = balance + 500000
-                trader.db.execute(
-                    "UPDATE account SET balance = ?, last_seed_addition = ?, last_update = ? WHERE id = 1",
-                    (new_balance, current_month_str, datetime.now(kst).isoformat())
-                )
-                print(f"   -> Monthly Seed Money Added: +500,000 KRW (New Balance: {new_balance:,.0f} KRW)")
+            # 1. Monthly Seed Money Addition (+500,000 KRW)
+            trader.apply_monthly_seed_if_needed(current_month_str)
 
             # 2. Year-End Tax Settlement (December only)
             if now.month == 12:
                 current_year_str = str(now.year)
-                tax_record = trader.db.fetchone("SELECT id FROM history WHERE ticker = 'TAX_DEDUCTION' AND strftime('%Y', exit_date) = ?", (current_year_str,))
-                
-                if not tax_record:
-                    year_pnl_row = trader.db.fetchone("SELECT SUM(pnl) FROM history WHERE strftime('%Y', exit_date) = ? AND ticker != 'TAX_DEDUCTION'", (current_year_str,))
-                    year_pnl = year_pnl_row[0] if year_pnl_row and year_pnl_row[0] is not None else 0.0
-                    
-                    if year_pnl > 2500000.0:
-                        tax_amount = (year_pnl - 2500000.0) * 0.22
-                        balance, equity, max_equity = trader.db.get_account_info()
-                        new_balance = balance - tax_amount
-                        
-                        with trader.db.transaction() as conn:
-                            trader.db.execute("UPDATE account SET balance = ?, last_update = ? WHERE id = 1", (new_balance, datetime.now(kst).isoformat()), conn=conn)
-                            trader.db.execute('''
-                                INSERT INTO history (ticker, entry_price, exit_price, quantity, entry_date, exit_date, pnl, roi, exit_reason, max_mdd_during_trade, t5_profit_attained)
-                                VALUES ('TAX_DEDUCTION', 0, 0, 0, ?, ?, ?, 0, 'YEAR_END_TAX_22', 0, 0)
-                            ''', (datetime.now(kst).isoformat(), datetime.now(kst).isoformat(), -tax_amount), conn=conn)
-                            
-                        print(f"   -> [TAX DEDUCTOR] Year-End Capital Gains Tax Deducted: -{tax_amount:,.0f} KRW (Yearly Realized PnL: {year_pnl:,.0f} KRW)")
-                    else:
-                        print(f"   -> [TAX DEDUCTOR] No tax due. Yearly Realized PnL: {year_pnl:,.0f} KRW (under 2.5M limit)")
+                trader.settle_year_end_tax_if_needed(current_year_str)
 
             # 3. Risk-Free Interest (Cash-only regime)
             print("\n[MONTH END] Checking for Risk-Free Interest (Cash-only regime)...")
-            active_pos = trader.db.fetchall_dict("SELECT * FROM positions")
-            if not active_pos:
-                account_row = trader.db.fetchone("SELECT last_interest_applied FROM account WHERE id = 1")
-                last_interest_month = account_row[0] if account_row else None
-                
-                if last_interest_month != current_month_str:
-                    balance, equity, max_equity = trader.db.get_account_info()
-                    interest = balance * 0.0033
-                    new_balance = balance + interest
-                    trader.db.execute(
-                        "UPDATE account SET balance = ?, last_interest_applied = ?, last_update = ? WHERE id = 1",
-                        (new_balance, current_month_str, datetime.now(kst).isoformat())
-                    )
-                    print(f"   -> Risk-Free Interest (+0.33%) Applied: +{interest:,.0f} KRW (New Balance: {new_balance:,.0f} KRW)")
-                else:
-                    print("   -> Risk-Free Interest already applied for this month.")
+            trader.apply_cash_interest_if_needed(current_month_str)
         
         # For simulation, we will run the screening everyday, but in production we need month-end check.
         
@@ -154,14 +102,14 @@ def run_invest_cycle():
             all_signals.extend(signals)
             time.sleep(1) # Gentle behavior
             
-        # Select absolute top 15 from all generated signals
-        all_signals = sorted(all_signals, key=lambda x: x['score'], reverse=True)[:15]
+        # Select absolute top signals
+        all_signals = sorted(all_signals, key=lambda x: x.score if hasattr(x, 'score') else x['score'], reverse=True)[:config.TOP_SIGNALS_LIMIT]
 
         # Record Pending Signals
         if all_signals:
-            print(f"\nSignals Captured (Top 15): {len(all_signals)} items")
+            print(f"\nSignals Captured (Top {config.TOP_SIGNALS_LIMIT}): {len(all_signals)} items")
             # Clear old pending signals
-            trader.db.execute("DELETE FROM pending_orders")
+            trader.clear_pending_orders()
             for sig in all_signals:
                 trader.add_pending_order(sig)
         else:
@@ -169,28 +117,14 @@ def run_invest_cycle():
 
     # --- STAGE 4: Advanced Reporting (Decoupled & Asynchronous) ---
     print("\n4. Queueing Notion Report for Background Processing...")
-    should_launch_worker = False
-    try:
-        import subprocess
-        
-        # Serialize report parameters
-        payload_data = {
-            "all_signals": all_signals,
-            "is_safe": is_safe,
-            "regime_slots": (15 if is_safe else 0)
-        }
-        payload_json = json.dumps(payload_data)
-        
-        # Insert reporting task into SQLite database queue
-        trader.db.execute('''
-            INSERT INTO reporting_queue (payload, status)
-            VALUES (?, 'PENDING')
-        ''', (payload_json,))
+    payload_data = {
+        "all_signals": all_signals,
+        "is_safe": is_safe,
+        "regime_slots": (config.MAX_PORTFOLIO_SLOTS if is_safe else 0)
+    }
+    should_launch_worker = trader.enqueue_report_task(payload_data)
+    if should_launch_worker:
         print("   -> Task successfully queued.")
-        should_launch_worker = True
-        
-    except Exception as e:
-        print(f"   -> Failed to queue report task: {e}")
 
     print("\n" + "="*50)
     print(f"Cycle Finished: {datetime.now(kst).strftime('%H:%M:%S')}")
